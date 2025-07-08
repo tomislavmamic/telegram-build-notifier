@@ -1,0 +1,2 @@
+requests==2.31.0
+google-cloud-functions==1.16.0
