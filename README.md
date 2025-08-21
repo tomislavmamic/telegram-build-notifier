@@ -27,6 +27,7 @@ A comprehensive Google Cloud Function suite that handles:
 - 🎯 **On-Demand Monitoring**: Run manually when you suspect issues
 - 🚨 **Smart Alerts**: Only sends notifications when problems are found
 - 📊 **Processing Stats**: Tracks overall system health metrics
+- 🌐 **Integrated Endpoint**: Available at `https://api.lunette.hr/api/v1/monitoring/monitor`
 
 ## Setup
 
@@ -92,29 +93,19 @@ A comprehensive Google Cloud Function suite that handles:
      --no-gen2
    ```
 
-7. **Deploy monitoring function (checks for stuck jobs and worker health)**:
-   ```bash
-   gcloud functions deploy monitor_invoicing_system \
-     --runtime python311 \
-     --trigger-http \
-     --allow-unauthenticated \
-     --env-vars-file .env.yaml \
-     --region us-central1 \
-     --timeout 540 \
-     --memory 256MB
-   ```
+7. **Monitoring is integrated into the main invoicing service**:
+   - The monitoring functionality has been integrated directly into the invoicing service
+   - No separate deployment needed - it's available at `https://api.lunette.hr/api/v1/monitoring/monitor`
+   - Uses the same Telegram credentials from the invoicing service configuration
 
 8. **Optional: Set up monitoring schedule (only if you want automated checks)**:
    ```bash
-   # Get the monitoring function URL first
-   MONITOR_URL=$(gcloud functions describe monitor_invoicing_system --region=us-central1 --format="value(httpsTrigger.url)")
-   
    # Create daily monitoring schedule (optional)
    gcloud scheduler jobs create http invoicing-monitor-job \
      --schedule="0 9 * * *" \
-     --uri="$MONITOR_URL" \
+     --uri="https://api.lunette.hr/api/v1/monitoring/monitor" \
      --http-method=GET \
-     --location=us-central1 \
+     --location=europe-west1 \
      --description="Daily morning check of invoicing system health"
    
    # OR just keep it for manual triggering - no scheduler needed!
@@ -164,11 +155,11 @@ python test_monitoring.py
 # Send a real test message to Telegram  
 python test_monitoring.py --send-telegram-test
 
-# Test the deployed function directly
-curl "https://europe-west1-lunette-minimax.cloudfunctions.net/monitor_invoicing_system"
+# Test the monitoring endpoint (integrated into invoicing service)
+curl "https://api.lunette.hr/api/v1/monitoring/monitor"
 
 # Manually trigger monitoring when you suspect issues
-curl "https://europe-west1-lunette-minimax.cloudfunctions.net/monitor_invoicing_system"
+curl "https://api.lunette.hr/api/v1/monitoring/monitor"
 ```
 
 ## Message Formats
