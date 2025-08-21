@@ -274,11 +274,10 @@ def check_stuck_jobs(db_session) -> List[Dict[str, Any]]:
 
 
 def check_worker_health() -> Dict[str, Any]:
-    """Check if the worker service is healthy."""
+    """Check if the invoicing service is healthy."""
     worker_urls = [
-        os.getenv("WORKER_SERVICE_URL", "https://lunette-invoicing-worker-898902894034.europe-west1.run.app"),
-        "https://lunette-invoicing-worker-898902894034.europe-west1.run.app",
-        "http://worker:8080",
+        os.getenv("WORKER_SERVICE_URL", "https://lunette-invoicing-898902894034.europe-west1.run.app/api/v1"),
+        "https://lunette-invoicing-898902894034.europe-west1.run.app/api/v1",
     ]
     
     health_status = {
