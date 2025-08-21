@@ -27,7 +27,8 @@ A comprehensive Google Cloud Function suite that handles:
 - 🎯 **On-Demand Monitoring**: Run manually when you suspect issues
 - 🚨 **Smart Alerts**: Only sends notifications when problems are found
 - 📊 **Processing Stats**: Tracks overall system health metrics
-- 🌐 **Integrated Endpoint**: Available at `https://api.lunette.hr/api/v1/monitoring/monitor`
+- 🌐 **Dedicated Dashboard**: Available at `https://monitor.lunette.hr/`
+- 📱 **Web Interface**: Visual dashboard with real-time status and controls
 
 ## Setup
 
@@ -111,6 +112,17 @@ A comprehensive Google Cloud Function suite that handles:
    # OR just keep it for manual triggering - no scheduler needed!
    ```
 
+### 9. **Configure DNS for monitor.lunette.hr**:
+   Add this CNAME record to your DNS:
+   ```
+   monitor.lunette.hr  CNAME  ghs.googlehosted.com
+   ```
+   
+   After DNS propagation, the monitoring dashboard will be available at:
+   - **Dashboard**: https://monitor.lunette.hr/
+   - **JSON API**: https://monitor.lunette.hr/monitor?format=json
+   - **Health Check**: https://monitor.lunette.hr/health
+
 ### 4. Test the Setup
 
 #### Test Build Notifications
@@ -155,11 +167,14 @@ python test_monitoring.py
 # Send a real test message to Telegram  
 python test_monitoring.py --send-telegram-test
 
-# Test the monitoring endpoint (integrated into invoicing service)
-curl "https://api.lunette.hr/api/v1/monitoring/monitor"
+# Test the monitoring dashboard
+curl "https://monitor.lunette.hr/"
 
-# Manually trigger monitoring when you suspect issues
-curl "https://api.lunette.hr/api/v1/monitoring/monitor"
+# Test the JSON API
+curl "https://monitor.lunette.hr/monitor?format=json"
+
+# Send a test alert
+curl "https://monitor.lunette.hr/send-alert"
 ```
 
 ## Message Formats
