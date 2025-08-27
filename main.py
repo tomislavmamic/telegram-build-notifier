@@ -2,6 +2,7 @@ import json
 import requests
 import base64
 import os
+import hashlib
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional
 
@@ -9,6 +10,78 @@ from google.cloud import functions_v1, secretmanager
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 import functions_framework
+
+# In-memory cache for alert throttling
+# Format: {alert_hash: {"last_sent": datetime, "count": int}}
+_alert_cache: Dict[str, Dict[str, Any]] = {}
+
+# Alert throttling settings
+ALERT_THROTTLE_HOURS = 12    # Don't send same alert more than once per 12 hours
+MAX_CONSECUTIVE_ALERTS = 3   # After 3 consecutive alerts about same jobs, wait less
+
+
+def _generate_alert_hash(stuck_jobs: List[Dict[str, Any]]) -> str:
+    """Generate a hash representing the current state of stuck jobs."""
+    if not stuck_jobs:
+        return ""
+    
+    # Create a signature based on job IDs, retry counts, and error states
+    signature_parts = []
+    for job in sorted(stuck_jobs, key=lambda x: x['id']):
+        # Include job ID, retry count, and whether it has an error
+        job_signature = f"{job['id']}:{job['retry_count']}:{bool(job.get('error_message'))}"
+        signature_parts.append(job_signature)
+    
+    signature = "|".join(signature_parts)
+    return hashlib.md5(signature.encode()).hexdigest()
+
+
+def _should_send_alert(alert_hash: str) -> bool:
+    """Check if we should send an alert based on throttling rules."""
+    if not alert_hash:
+        return False
+    
+    now = datetime.utcnow()
+    
+    if alert_hash not in _alert_cache:
+        # First time seeing this alert state
+        _alert_cache[alert_hash] = {"last_sent": now, "count": 1}
+        return True
+    
+    cache_entry = _alert_cache[alert_hash]
+    last_sent = cache_entry["last_sent"]
+    count = cache_entry["count"]
+    
+    # Calculate throttle period based on consecutive alerts
+    if count >= MAX_CONSECUTIVE_ALERTS:
+        # After max consecutive alerts, wait shorter time (more frequent updates)
+        throttle_hours = max(1, ALERT_THROTTLE_HOURS // 2)  # Half the normal time
+    else:
+        throttle_hours = ALERT_THROTTLE_HOURS
+    
+    time_since_last = now - last_sent
+    if time_since_last >= timedelta(hours=throttle_hours):
+        # Enough time has passed, send the alert
+        cache_entry["last_sent"] = now
+        cache_entry["count"] = count + 1
+        return True
+    
+    return False
+
+
+def _cleanup_alert_cache():
+    """Clean up old entries from alert cache."""
+    now = datetime.utcnow()
+    expired_keys = []
+    
+    for alert_hash, cache_entry in _alert_cache.items():
+        # Remove entries older than 24 hours
+        if now - cache_entry["last_sent"] > timedelta(hours=24):
+            expired_keys.append(alert_hash)
+    
+    for key in expired_keys:
+        del _alert_cache[key]
+
 
 def build_notifier(cloud_event, context):
     """Cloud Function triggered by Pub/Sub topic for Cloud Build notifications."""
@@ -318,20 +391,46 @@ def format_stuck_jobs_alert(stuck_jobs: List[Dict[str, Any]]) -> str:
     if not stuck_jobs:
         return ""
     
+    # Get alert count for this state
+    alert_hash = _generate_alert_hash(stuck_jobs)
+    alert_count = _alert_cache.get(alert_hash, {}).get("count", 1)
+    
     message_parts = [
         "🚨 <b>STUCK JOBS ALERT</b>",
         f"Found {len(stuck_jobs)} jobs stuck for more than 24 hours:",
-        ""
     ]
     
+    # Add throttling info if this is a repeated alert
+    if alert_count > 1:
+        message_parts.append(f"<i>(Alert #{alert_count} - throttled to reduce spam)</i>")
+    
+    message_parts.append("")
+    
     for job in stuck_jobs[:5]:  # Limit to first 5 jobs
+        # Show both order number and external ID for complete context
+        if job.get('order_number'):
+            order_display = f"Order #{job['order_number']} ({job['external_order_id']})"
+        else:
+            order_display = f"Order {job['external_order_id']}"
+        
+        # Format creation date for readability  
+        try:
+            created_date = datetime.fromisoformat(job['created_at']).strftime("%Y-%m-%d %H:%M")
+        except:
+            created_date = job['created_at'][:16]  # Fallback to first 16 chars
+            
+        # Customer name or fallback
+        customer_name = job.get('customer_name', 'Unknown Customer')
+            
         message_parts.extend([
-            f"📋 Order: <code>{job['external_order_id']}</code>",
+            f"📋 {order_display}",
+            f"👤 Customer: <code>{customer_name}</code>",
+            f"📅 Created: {created_date}",
             f"⏱ Stuck: {job['hours_stuck']} hours ({job['status']})",
             f"🔄 Retries: {job['retry_count']}",
         ])
         
-        if job['error_message']:
+        if job.get('error_message'):
             error_msg = job['error_message'][:100] + "..." if len(job['error_message']) > 100 else job['error_message']
             message_parts.append(f"❌ Error: <code>{error_msg}</code>")
         

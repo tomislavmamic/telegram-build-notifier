@@ -16,7 +16,7 @@ from flask import Flask, request, jsonify, render_template_string
 from main import (
     get_secret, send_telegram_alert, check_stuck_jobs, check_worker_health,
     format_stuck_jobs_alert, format_worker_health_alert,
-    get_database_connection
+    get_database_connection, _generate_alert_hash, _should_send_alert, _cleanup_alert_cache
 )
 
 # Configure logging
@@ -117,8 +117,19 @@ DASHBOARD_TEMPLATE = """
     </div>
 
     <script>
-        // Auto-refresh every 5 minutes
-        setTimeout(() => location.reload(), 5 * 60 * 1000);
+        // Auto-refresh every 30 minutes, but only if page is visible to avoid spam
+        function scheduleRefresh() {
+            setTimeout(() => {
+                // Only refresh if page is visible (user is actively viewing)
+                if (!document.hidden) {
+                    location.reload();
+                } else {
+                    // If page is hidden, check again in 5 minutes
+                    setTimeout(scheduleRefresh, 5 * 60 * 1000);
+                }
+            }, 30 * 60 * 1000);
+        }
+        scheduleRefresh();
     </script>
 </body>
 </html>
@@ -138,13 +149,25 @@ def monitor_dashboard():
         
         alerts = []
         
+        # Clean up old cache entries first
+        _cleanup_alert_cache()
+        
         # Check for stuck jobs
         stuck_jobs = check_stuck_jobs(db_session)
         if stuck_jobs:
             logger.warning(f"Found {len(stuck_jobs)} stuck jobs")
-            stuck_jobs_alert = format_stuck_jobs_alert(stuck_jobs)
-            if stuck_jobs_alert:
-                alerts.append(stuck_jobs_alert)
+            
+            # Generate hash for current stuck jobs state
+            alert_hash = _generate_alert_hash(stuck_jobs)
+            
+            # Only send alert if throttling rules allow it
+            if _should_send_alert(alert_hash):
+                stuck_jobs_alert = format_stuck_jobs_alert(stuck_jobs)
+                if stuck_jobs_alert:
+                    alerts.append(stuck_jobs_alert)
+                    logger.info(f"Sending stuck jobs alert (hash: {alert_hash[:8]})")
+            else:
+                logger.info(f"Throttling stuck jobs alert (hash: {alert_hash[:8]}) - same jobs already reported recently")
         
         # Check worker health
         health_status = check_worker_health()
