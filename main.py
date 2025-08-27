@@ -147,51 +147,80 @@ def invoice_notifier(cloud_event, context):
         currency = invoice_data.get('currency', 'EUR')
         error_message = invoice_data.get('error_message')
         
-        # Determine emoji and message based on event type and status
+        # Simple format: "Order {order_number} {status}"
+        order_number = invoice_data.get('order_number') or external_order_id
+        
+        # Map status to readable format
+        status_display = status
         if event_type == 'invoice_creation':
             if status == 'success':
-                emoji = "💰"
-                message = f"{emoji} *Invoice Created Successfully*\n"
-                message += f"🧾 Invoice ID: `{invoice_id}`\n"
-                message += f"📋 Order ID: `{external_order_id}`\n"
-                message += f"👤 Customer: `{customer_name}`\n"
-                message += f"💵 Amount: `{amount} {currency}`"
+                status_display = "created"
             elif status == 'failure':
-                emoji = "❌"
-                message = f"{emoji} *Invoice Creation Failed*\n"
-                message += f"📋 Order ID: `{external_order_id}`\n"
-                message += f"👤 Customer: `{customer_name}`\n"
-                if error_message:
-                    message += f"🚨 Error: `{error_message}`"
-            else:
-                emoji = "⏳"
-                message = f"{emoji} *Invoice Creation Attempt*\n"
-                message += f"📋 Order ID: `{external_order_id}`\n"
-                message += f"👤 Customer: `{customer_name}`\n"
-                message += f"📊 Status: `{status}`"
+                status_display = "failed"
         elif event_type == 'invoice_completion':
             if status == 'success':
-                emoji = "✅"
-                message = f"{emoji} *Invoice Completed & Fiscalized*\n"
-                message += f"🧾 Invoice ID: `{invoice_id}`\n"
-                message += f"📋 Order ID: `{external_order_id}`\n"
-                message += f"👤 Customer: `{customer_name}`\n"
-                message += f"💵 Amount: `{amount} {currency}`"
+                status_display = "completed"
             else:
-                emoji = "⚠️"
-                message = f"{emoji} *Invoice Completion Issue*\n"
-                message += f"🧾 Invoice ID: `{invoice_id}`\n"
-                message += f"📋 Order ID: `{external_order_id}`\n"
-                message += f"📊 Status: `{status}`"
-                if error_message:
-                    message += f"🚨 Error: `{error_message}`"
-        else:
-            # Generic invoice event
-            emoji = "📄"
-            message = f"{emoji} *Invoice Event: {event_type}*\n"
-            message += f"🧾 Invoice ID: `{invoice_id}`\n"
-            message += f"📋 Order ID: `{external_order_id}`\n"
-            message += f"📊 Status: `{status}`"
+                status_display = "completion failed"
+        elif event_type == 'customer_created':
+            if status == 'success':
+                status_display = "customer created"
+            elif status == 'failure':
+                status_display = "customer creation failed"
+        elif event_type == 'minimax_invoice_created':
+            if status == 'success':
+                status_display = "invoice created in Minimax"
+            elif status == 'failure':
+                status_display = "Minimax invoice creation failed"
+        
+        message = f"Order {order_number} {status_display}"
+        
+        # OLD VERBOSE FORMAT (commented out for potential reuse later):
+        # # Determine emoji and message based on event type and status
+        # if event_type == 'invoice_creation':
+        #     if status == 'success':
+        #         emoji = "💰"
+        #         message = f"{emoji} *Invoice Created Successfully*\n"
+        #         message += f"🧾 Invoice ID: `{invoice_id}`\n"
+        #         message += f"📋 Order ID: `{external_order_id}`\n"
+        #         message += f"👤 Customer: `{customer_name}`\n"
+        #         message += f"💵 Amount: `{amount} {currency}`"
+        #     elif status == 'failure':
+        #         emoji = "❌"
+        #         message = f"{emoji} *Invoice Creation Failed*\n"
+        #         message += f"📋 Order ID: `{external_order_id}`\n"
+        #         message += f"👤 Customer: `{customer_name}`\n"
+        #         if error_message:
+        #             message += f"🚨 Error: `{error_message}`"
+        #     else:
+        #         emoji = "⏳"
+        #         message = f"{emoji} *Invoice Creation Attempt*\n"
+        #         message += f"📋 Order ID: `{external_order_id}`\n"
+        #         message += f"👤 Customer: `{customer_name}`\n"
+        #         message += f"📊 Status: `{status}`"
+        # elif event_type == 'invoice_completion':
+        #     if status == 'success':
+        #         emoji = "✅"
+        #         message = f"{emoji} *Invoice Completed & Fiscalized*\n"
+        #         message += f"🧾 Invoice ID: `{invoice_id}`\n"
+        #         message += f"📋 Order ID: `{external_order_id}`\n"
+        #         message += f"👤 Customer: `{customer_name}`\n"
+        #         message += f"💵 Amount: `{amount} {currency}`"
+        #     else:
+        #         emoji = "⚠️"
+        #         message = f"{emoji} *Invoice Completion Issue*\n"
+        #         message += f"🧾 Invoice ID: `{invoice_id}`\n"
+        #         message += f"📋 Order ID: `{external_order_id}`\n"
+        #         message += f"📊 Status: `{status}`"
+        #         if error_message:
+        #             message += f"🚨 Error: `{error_message}`"
+        # else:
+        #     # Generic invoice event
+        #     emoji = "📄"
+        #     message = f"{emoji} *Invoice Event: {event_type}*\n"
+        #     message += f"🧾 Invoice ID: `{invoice_id}`\n"
+        #     message += f"📋 Order ID: `{external_order_id}`\n"
+        #     message += f"📊 Status: `{status}`"
         
         send_telegram_message(BOT_TOKEN, CHAT_ID, message)
         print(f"Successfully sent invoice notification for {event_type}: {invoice_id}")
