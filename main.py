@@ -101,8 +101,10 @@ def build_notifier(cloud_event, context):
         status = build_data.get('status')
         project_id = build_data.get('projectId')
         build_id = build_data.get('id')
-        repo_name = build_data.get('substitutions', {}).get('REPO_NAME', 'Unknown')
-        branch = build_data.get('substitutions', {}).get('BRANCH_NAME', 'Unknown')
+        substitutions = build_data.get('substitutions', {})
+        repo_name = substitutions.get('REPO_NAME', 'Unknown')
+        branch = substitutions.get('BRANCH_NAME', 'Unknown')
+        commit_sha = substitutions.get('COMMIT_SHA', '')
         
         # Only send notifications for final statuses
         if status in ['SUCCESS', 'FAILURE', 'TIMEOUT', 'CANCELLED']:
@@ -113,6 +115,16 @@ def build_notifier(cloud_event, context):
             message += f"🔗 Repo: `{repo_name}`\n"
             message += f"🌿 Branch: `{branch}`\n"
             message += f"🆔 Build ID: `{build_id}`"
+            
+            # Add GitHub commit link if commit SHA is available
+            if commit_sha and repo_name != 'Unknown':
+                # Construct GitHub URL - assuming the repo_name format is owner/repo or just repo
+                if '/' in repo_name:
+                    github_url = f"https://github.com/{repo_name}/commit/{commit_sha[:7]}"
+                else:
+                    # If only repo name, try with common patterns (adjust as needed)
+                    github_url = f"https://github.com/tomislavmamic/{repo_name}/commit/{commit_sha[:7]}"
+                message += f"\n🔗 [Commit {commit_sha[:7]}]({github_url})"
             
             send_telegram_message(BOT_TOKEN, CHAT_ID, message)
             print(f"Successfully sent build notification for build {build_id}")
