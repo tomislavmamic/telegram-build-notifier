@@ -162,30 +162,46 @@ def invoice_notifier(cloud_event, context):
         # Simple format: "Order {order_number} {status}"
         order_number = invoice_data.get('order_number') or external_order_id
         
-        # Map status to readable format
-        status_display = status
-        if event_type == 'invoice_creation':
-            if status == 'success':
-                status_display = "created"
-            elif status == 'failure':
-                status_display = "failed"
-        elif event_type == 'invoice_completion':
-            if status == 'success':
-                status_display = "completed"
+        # Handle the new unified notification format
+        if event_type == 'unified_order_status':
+            # Use the pre-formatted message directly
+            formatted_message = invoice_data.get('formatted_message')
+            if formatted_message:
+                message = formatted_message
             else:
-                status_display = "completion failed"
-        elif event_type == 'customer_created':
-            if status == 'success':
-                status_display = "customer created"
-            elif status == 'failure':
-                status_display = "customer creation failed"
-        elif event_type == 'minimax_invoice_created':
-            if status == 'success':
-                status_display = "invoice created in Minimax"
-            elif status == 'failure':
-                status_display = "Minimax invoice creation failed"
-        
-        message = f"Order {order_number} {status_display}"
+                # Fallback: construct message from components
+                order_status = invoice_data.get('order_status', '❌')
+                customer_status = invoice_data.get('customer_status', '❌')
+                invoice_status = invoice_data.get('invoice_status', '❌')
+                document_status = invoice_data.get('document_status', '❌')
+                local_timestamp = invoice_data.get('local_timestamp', '')
+                
+                message = f"🛒 #{order_number} {customer_name} : narudžba {order_status}, kupac {customer_status}, račun {invoice_status}, dokument {document_status} – {local_timestamp}"
+        else:
+            # Map status to readable format for old event types
+            status_display = status
+            if event_type == 'invoice_creation':
+                if status == 'success':
+                    status_display = "created"
+                elif status == 'failure':
+                    status_display = "failed"
+            elif event_type == 'invoice_completion':
+                if status == 'success':
+                    status_display = "completed"
+                else:
+                    status_display = "completion failed"
+            elif event_type == 'customer_created':
+                if status == 'success':
+                    status_display = "customer created"
+                elif status == 'failure':
+                    status_display = "customer creation failed"
+            elif event_type == 'minimax_invoice_created':
+                if status == 'success':
+                    status_display = "invoice created in Minimax"
+                elif status == 'failure':
+                    status_display = "Minimax invoice creation failed"
+            
+            message = f"Order {order_number} {status_display}"
         
         # OLD VERBOSE FORMAT (commented out for potential reuse later):
         # # Determine emoji and message based on event type and status
